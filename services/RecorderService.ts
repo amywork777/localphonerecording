@@ -11,15 +11,14 @@ export class RecorderService {
 
   async start(): Promise<boolean> {
     try {
-      // Clean up any existing recording first
-      if (this.recording) {
-        try {
-          await this.recording.stopAndUnloadAsync();
-        } catch (cleanupError) {
-          console.log('Cleanup error (ignored):', cleanupError);
-        }
-        this.recording = null;
+      // Ensure we're not already recording
+      if (this.isRecording) {
+        console.log('Already recording, cannot start new recording');
+        return false;
       }
+
+      // Clean up any existing recording first with better error handling
+      await this.forceCleanup();
 
       // Request permissions
       const { status } = await Audio.requestPermissionsAsync();
@@ -34,28 +33,49 @@ export class RecorderService {
         playsInSilentModeIOS: true,
       });
 
-      // Create new recording
-      this.recording = new Audio.Recording();
-      await this.recording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+      console.log('🎤 Creating new recording object...');
+      
+      // Create new recording with retry logic for state conflicts
+      let retryCount = 0;
+      while (retryCount < 3) {
+        try {
+          this.recording = new Audio.Recording();
+          await this.recording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+          break; // Success, exit retry loop
+        } catch (prepareError) {
+          console.warn(`Recording prepare attempt ${retryCount + 1} failed:`, prepareError);
+          
+          // Clean up failed recording object
+          if (this.recording) {
+            try {
+              await this.recording.stopAndUnloadAsync();
+            } catch (cleanupError) {
+              // Ignore cleanup errors
+            }
+            this.recording = null;
+          }
+          
+          retryCount++;
+          if (retryCount >= 3) {
+            throw prepareError; // Re-throw if all retries failed
+          }
+          
+          // Wait briefly before retry
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
       
       // Start recording
-      await this.recording.startAsync();
+      await this.recording!.startAsync();
       this.startTime = Date.now();
       this.bookmarks = [];
       
-      console.log('Recording started successfully');
+      console.log('✅ Recording started successfully');
       return true;
     } catch (error) {
-      console.error('Failed to start recording:', error);
-      // Clean up on error
-      if (this.recording) {
-        try {
-          await this.recording.stopAndUnloadAsync();
-        } catch (cleanupError) {
-          console.log('Error cleanup failed (ignored):', cleanupError);
-        }
-        this.recording = null;
-      }
+      console.error('❌ Failed to start recording:', error);
+      // Force cleanup on error
+      await this.forceCleanup();
       return false;
     }
   }
@@ -103,7 +123,16 @@ export class RecorderService {
   }
 
   get isRecording(): boolean {
-    return this.recording?._isDoneRecording === false;
+    if (!this.recording) return false;
+    
+    try {
+      // Check if recording object exists and is in a valid state
+      return this.recording._isDoneRecording === false;
+    } catch (error) {
+      // If we can't check state, assume not recording
+      console.warn('Could not check recording state:', error);
+      return false;
+    }
   }
 
   async getDurationMillis(): Promise<number> {
@@ -119,17 +148,34 @@ export class RecorderService {
     }
   }
 
-  // Cleanup method to ensure no lingering recordings
-  async cleanup(): Promise<void> {
+  // Force cleanup method with aggressive error handling
+  private async forceCleanup(): Promise<void> {
     if (this.recording) {
       try {
-        await this.recording.stopAndUnloadAsync();
+        // Try to get status first to check if recording is valid
+        const status = await this.recording.getStatusAsync();
+        if (!status.isDoneRecording) {
+          await this.recording.stopAndUnloadAsync();
+        } else {
+          // If already done, just unload
+          await this.recording.unloadAsync();
+        }
       } catch (error) {
-        console.log('Cleanup error (ignored):', error);
+        // If normal cleanup fails, try just unloading
+        try {
+          await this.recording.unloadAsync();
+        } catch (unloadError) {
+          console.log('Force unload also failed (ignored):', unloadError);
+        }
       }
       this.recording = null;
     }
     this.fileUri = null;
     this.bookmarks = [];
+  }
+
+  // Public cleanup method to ensure no lingering recordings
+  async cleanup(): Promise<void> {
+    await this.forceCleanup();
   }
 }

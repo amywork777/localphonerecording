@@ -24,10 +24,10 @@ export class FlicService {
   private clickCount = 0;
   private holdTimer: NodeJS.Timeout | null = null;
 
-  // Flic button specific UUIDs (these are the actual Flic UUIDs)
-  private readonly FLIC_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // Nordic UART Service
-  private readonly FLIC_TX_CHARACTERISTIC = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // TX (write)
-  private readonly FLIC_RX_CHARACTERISTIC = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // RX (notify)
+  // Flic button specific UUIDs (actual UUIDs from real device)
+  private readonly FLIC_SERVICE_UUID = '00420000-8f59-4420-870d-84f3b617e493'; // Real Flic service
+  private readonly FLIC_TX_CHARACTERISTIC = '00420001-8f59-4420-870d-84f3b617e493'; // TX (write)
+  private readonly FLIC_RX_CHARACTERISTIC = '00420002-8f59-4420-870d-84f3b617e493'; // RX (notify)
   
   // Additional Flic-specific UUIDs
   private readonly FLIC_BUTTON_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -124,12 +124,13 @@ export class FlicService {
         }
       });
 
-      // Stop scanning after 30 seconds
+      // Stop scanning after 15 seconds to be less battery intensive
       setTimeout(() => {
         if (this.isScanning) {
+          console.log('⏰ Scan timeout reached, stopping scan');
           this.stopScanning();
         }
-      }, 30000);
+      }, 15000);
 
       return true;
     } catch (error) {
@@ -188,28 +189,68 @@ export class FlicService {
     return isFlic;
   }
 
-  private async connectToDevice(device: Device): Promise<void> {
+  private async connectToDevice(device: any): Promise<void> {
     try {
-      console.log('Connecting to device:', device.name);
-      this.device = await device.connect();
+      console.log('🔄 Connecting to device:', device.name || device.id);
+      
+      // Set up disconnection handler BEFORE connecting
+      device.onDisconnected((error, disconnectedDevice) => {
+        console.log('📱 Device disconnected:', disconnectedDevice?.name || disconnectedDevice?.id);
+        if (error) {
+          console.error('Disconnection error:', error);
+        }
+        this.device = null;
+        this.delegate?.onConnectionChange(false);
+        
+        // Auto-reconnect after short delay
+        setTimeout(() => {
+          console.log('🔄 Attempting auto-reconnect...');
+          this.startAutoReconnect();
+        }, 2000);
+      });
+      
+      // Connect with extended timeout and options
+      console.log('🔗 Establishing connection...');
+      this.device = await device.connect({
+        requestMTU: 247,
+        connectionPriority: 'highPerformance', 
+        timeout: 15000 // 15 second timeout
+      });
+      
+      console.log('🔍 Discovering services and characteristics...');
       await this.device.discoverAllServicesAndCharacteristics();
       
+      console.log('✅ Successfully connected to Flic button:', device.name);
       this.delegate?.onConnectionChange(true);
-      console.log('Connected to Flic button');
       
-      // Subscribe to button events
-      await this.subscribeToButtonEvents();
+      // Subscribe to button events with delay to ensure stability
+      setTimeout(async () => {
+        await this.subscribeToButtonEvents();
+      }, 1000);
       
     } catch (error) {
-      console.error('Connection failed:', error);
+      console.error('❌ Connection failed:', error);
       this.device = null;
       this.delegate?.onConnectionChange(false);
-      this.startAutoReconnect();
+      
+      // Retry connection after delay
+      setTimeout(() => {
+        this.startAutoReconnect();
+      }, 3000);
     }
   }
 
   private async subscribeToButtonEvents(): Promise<void> {
-    if (!this.device) return;
+    if (!this.device) {
+      console.error('❌ Cannot subscribe - no device connected');
+      return;
+    }
+
+    // Check if device is still connected before proceeding
+    if (!this.device.isConnected()) {
+      console.error('❌ Cannot subscribe - device is disconnected');
+      return;
+    }
 
     try {
       console.log('📡 Discovering all services and characteristics...');
@@ -219,10 +260,14 @@ export class FlicService {
       console.log('🔍 Available services:', services.map(s => ({ uuid: s.uuid, isPrimary: s.isPrimary })));
       
       for (const service of services) {
-        const characteristics = await service.characteristics();
-        console.log(`📋 Service ${service.uuid} characteristics:`, 
-          characteristics.map(c => ({ uuid: c.uuid, isReadable: c.isReadable, isWritableWithResponse: c.isWritableWithResponse, isNotifiable: c.isNotifiable }))
-        );
+        try {
+          const characteristics = await service.characteristics();
+          console.log(`📋 Service ${service.uuid} characteristics:`, 
+            characteristics.map(c => ({ uuid: c.uuid, isReadable: c.isReadable, isWritableWithResponse: c.isWritableWithResponse, isNotifiable: c.isNotifiable }))
+          );
+        } catch (charError) {
+          console.warn(`⚠️ Could not get characteristics for service ${service.uuid}:`, charError);
+        }
       }
       
       // Try to find the Flic RX characteristic (for receiving notifications)
@@ -235,12 +280,16 @@ export class FlicService {
       if (!rxCharacteristic) {
         console.log('🔍 Flic RX not found, looking for any notifiable characteristic...');
         for (const service of services) {
-          const characteristics = await service.characteristics();
-          const notifiableChar = characteristics.find(c => c.isNotifiable);
-          if (notifiableChar) {
-            console.log('📡 Found notifiable characteristic:', notifiableChar.uuid);
-            rxCharacteristic = notifiableChar;
-            break;
+          try {
+            const characteristics = await service.characteristics();
+            const notifiableChar = characteristics.find(c => c.isNotifiable);
+            if (notifiableChar) {
+              console.log('📡 Found notifiable characteristic:', notifiableChar.uuid);
+              rxCharacteristic = notifiableChar;
+              break;
+            }
+          } catch (charError) {
+            console.warn(`⚠️ Error checking characteristics in service ${service.uuid}:`, charError);
           }
         }
       }
@@ -250,26 +299,26 @@ export class FlicService {
         return;
       }
 
-      console.log('Found Flic RX characteristic, subscribing to notifications...');
+      console.log('📡 Found Flic RX characteristic, subscribing to notifications...');
 
       // Subscribe to notifications from the Flic button
       rxCharacteristic.monitor((error, char) => {
         if (error) {
-          console.error('Flic button monitor error:', error);
+          console.error('❌ Flic button monitor error:', error);
           return;
         }
         
         if (char?.value) {
+          console.log('📨 Button event received:', char.value.length, 'bytes');
           this.handleFlicButtonEvent(char.value);
         }
       });
 
-      // Send initialization command to Flic button if needed
-      await this.initializeFlicButton();
-
-      console.log('Successfully subscribed to Flic button events');
+      // Skip initialization command - button works without it and it was causing write failures
+      console.log('✅ Successfully subscribed to Flic button events - ready for clicks!');
     } catch (error) {
-      console.error('Failed to subscribe to Flic button events:', error);
+      console.error('❌ Failed to subscribe to Flic button events:', error);
+      // Don't disconnect on subscribe failure - connection might still be useful
     }
   }
 
@@ -431,12 +480,13 @@ export class FlicService {
   private startAutoReconnect(): void {
     if (this.reconnectInterval) return;
 
+    console.log('🔄 Starting auto-reconnect mechanism...');
     this.reconnectInterval = setInterval(() => {
       if (!this.device && !this.isScanning) {
-        console.log('Attempting to reconnect...');
+        console.log('🔍 Auto-reconnect: Scanning for Flic button...');
         this.startScanning();
       }
-    }, 5000); // Try to reconnect every 5 seconds
+    }, 8000); // Try to reconnect every 8 seconds (less aggressive)
   }
 
   async disconnect(): Promise<void> {
