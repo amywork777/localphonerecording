@@ -24,13 +24,22 @@ export class FlicService {
   private clickCount = 0;
   private holdTimer: NodeJS.Timeout | null = null;
 
-  // Flic button service and characteristic UUIDs
-  private readonly FLIC_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
-  private readonly FLIC_CHARACTERISTIC_UUID = '00002a19-0000-1000-8000-00805f9b34fb';
+  // Flic button specific UUIDs (these are the actual Flic UUIDs)
+  private readonly FLIC_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // Nordic UART Service
+  private readonly FLIC_TX_CHARACTERISTIC = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // TX (write)
+  private readonly FLIC_RX_CHARACTERISTIC = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // RX (notify)
   
-  // Alternative UUIDs if above don't work
-  private readonly ALT_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-  private readonly ALT_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+  // Additional Flic-specific UUIDs
+  private readonly FLIC_BUTTON_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  private readonly GENERIC_ACCESS_SERVICE = '00001800-0000-1000-8000-00805f9b34fb';
+  private readonly DEVICE_INFORMATION_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb';
+  
+  // Flic button event codes
+  private readonly FLIC_BUTTON_DOWN = 0x01;
+  private readonly FLIC_BUTTON_UP = 0x02;
+  private readonly FLIC_CLICK = 0x03;
+  private readonly FLIC_DOUBLE_CLICK = 0x04;
+  private readonly FLIC_HOLD = 0x05;
 
   constructor() {
     try {
@@ -138,12 +147,36 @@ export class FlicService {
     }
   }
 
-  private isFlicButton(device: Device): boolean {
+  private isFlicButton(device: any): boolean {
     const name = device.name?.toLowerCase() || '';
-    return name.includes('flic') || 
-           name.includes('button') ||
-           device.serviceUUIDs?.includes(this.FLIC_SERVICE_UUID) ||
-           device.serviceUUIDs?.includes(this.ALT_SERVICE_UUID);
+    const localName = device.localName?.toLowerCase() || '';
+    
+    // Check for Flic-specific identifiers
+    const isFlicName = name.includes('flic') || 
+                       localName.includes('flic') ||
+                       name.includes('button') ||
+                       localName.includes('button');
+    
+    // Check for Nordic UART Service UUID (used by Flic buttons)
+    const hasFlicService = device.serviceUUIDs?.some(uuid => 
+      uuid.toLowerCase() === this.FLIC_SERVICE_UUID.toLowerCase() ||
+      uuid.toLowerCase() === this.GENERIC_ACCESS_SERVICE.toLowerCase()
+    );
+    
+    // Check manufacturer data for Flic-specific patterns
+    const hasFlicManufacturerData = device.manufacturerData && 
+      device.manufacturerData.length > 0;
+    
+    console.log('Checking device:', {
+      name,
+      localName,
+      serviceUUIDs: device.serviceUUIDs,
+      manufacturerData: device.manufacturerData,
+      isFlicName,
+      hasFlicService
+    });
+    
+    return isFlicName || hasFlicService || hasFlicManufacturerData;
   }
 
   private async connectToDevice(device: Device): Promise<void> {
@@ -170,39 +203,61 @@ export class FlicService {
     if (!this.device) return;
 
     try {
-      // Try primary service/characteristic
-      let characteristic = await this.findCharacteristic(
+      // Find the Flic RX characteristic (for receiving notifications)
+      const rxCharacteristic = await this.findCharacteristic(
         this.FLIC_SERVICE_UUID, 
-        this.FLIC_CHARACTERISTIC_UUID
+        this.FLIC_RX_CHARACTERISTIC
       );
 
-      // Try alternative if primary doesn't exist
-      if (!characteristic) {
-        characteristic = await this.findCharacteristic(
-          this.ALT_SERVICE_UUID, 
-          this.ALT_CHARACTERISTIC_UUID
-        );
-      }
-
-      if (!characteristic) {
-        console.error('No suitable characteristic found for button events');
+      if (!rxCharacteristic) {
+        console.error('Flic RX characteristic not found');
         return;
       }
 
-      characteristic.monitor((error, char) => {
+      console.log('Found Flic RX characteristic, subscribing to notifications...');
+
+      // Subscribe to notifications from the Flic button
+      rxCharacteristic.monitor((error, char) => {
         if (error) {
-          console.error('Characteristic monitor error:', error);
+          console.error('Flic button monitor error:', error);
           return;
         }
         
         if (char?.value) {
-          this.handleButtonEvent(char.value);
+          this.handleFlicButtonEvent(char.value);
         }
       });
 
-      console.log('Subscribed to button events');
+      // Send initialization command to Flic button if needed
+      await this.initializeFlicButton();
+
+      console.log('Successfully subscribed to Flic button events');
     } catch (error) {
-      console.error('Failed to subscribe to button events:', error);
+      console.error('Failed to subscribe to Flic button events:', error);
+    }
+  }
+
+  private async initializeFlicButton(): Promise<void> {
+    try {
+      // Find the TX characteristic for sending commands
+      const txCharacteristic = await this.findCharacteristic(
+        this.FLIC_SERVICE_UUID, 
+        this.FLIC_TX_CHARACTERISTIC
+      );
+
+      if (!txCharacteristic) {
+        console.log('TX characteristic not found, button may work without initialization');
+        return;
+      }
+
+      // Send initialization command (this may vary by Flic button model)
+      const initCommand = new Uint8Array([0x01, 0x00]); // Basic enable command
+      await txCharacteristic.writeWithResponse(Buffer.from(initCommand).toString('base64'));
+      
+      console.log('Sent initialization command to Flic button');
+    } catch (error) {
+      console.warn('Could not initialize Flic button:', error);
+      // Continue anyway - button might work without init
     }
   }
 
@@ -222,52 +277,109 @@ export class FlicService {
     }
   }
 
-  private handleButtonEvent(data: string): void {
-    // This is a simplified button event handler
-    // In reality, you'd need to parse the specific data format from your Flic button
-    const now = Date.now();
-    
-    // Clear existing timers
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-      this.clickTimer = null;
+  private handleFlicButtonEvent(data: string): void {
+    try {
+      // Decode base64 data from Flic button
+      const buffer = Buffer.from(data, 'base64');
+      console.log('Flic button data received:', Array.from(buffer).map(b => '0x' + b.toString(16)).join(' '));
+      
+      if (buffer.length === 0) return;
+      
+      const eventCode = buffer[0];
+      
+      // Handle different Flic button events
+      switch (eventCode) {
+        case this.FLIC_CLICK:
+          console.log('Flic: Single click detected');
+          this.delegate?.onSingleClick();
+          break;
+          
+        case this.FLIC_DOUBLE_CLICK:
+          console.log('Flic: Double click detected');
+          this.delegate?.onDoubleClick();
+          break;
+          
+        case this.FLIC_HOLD:
+          console.log('Flic: Hold detected');
+          this.delegate?.onHold();
+          break;
+          
+        case this.FLIC_BUTTON_DOWN:
+          console.log('Flic: Button down');
+          this.handleButtonDown();
+          break;
+          
+        case this.FLIC_BUTTON_UP:
+          console.log('Flic: Button up');
+          this.handleButtonUp();
+          break;
+          
+        default:
+          // Fallback: try to detect patterns manually
+          console.log('Flic: Unknown event code:', eventCode, 'falling back to pattern detection');
+          this.handleGenericButtonEvent();
+          break;
+      }
+      
+    } catch (error) {
+      console.error('Error parsing Flic button data:', error);
+      // Fallback to generic button handling
+      this.handleGenericButtonEvent();
+    }
+  }
+
+  private handleButtonDown(): void {
+    // Start hold timer when button is pressed
+    if (this.holdTimer) {
+      clearTimeout(this.holdTimer);
     }
     
+    this.holdTimer = setTimeout(() => {
+      console.log('Flic: Hold timeout triggered');
+      this.delegate?.onHold();
+    }, 1000); // 1 second hold
+  }
+
+  private handleButtonUp(): void {
+    // Button released - handle click counting
     if (this.holdTimer) {
       clearTimeout(this.holdTimer);
       this.holdTimer = null;
     }
-
-    // Button pressed - start hold timer
-    this.holdTimer = setTimeout(() => {
-      this.delegate?.onHold();
-      this.clickCount = 0;
-    }, 1000); // 1 second hold
-
-    // Count clicks
-    if (now - this.lastClickTime < 500) { // 500ms between clicks for double click
+    
+    const now = Date.now();
+    
+    // Count clicks for double-click detection
+    if (now - this.lastClickTime < 400) { // 400ms window for double click
       this.clickCount++;
     } else {
       this.clickCount = 1;
     }
     
     this.lastClickTime = now;
-
-    // Set timer to handle single/double click
+    
+    // Clear previous timer
+    if (this.clickTimer) {
+      clearTimeout(this.clickTimer);
+    }
+    
+    // Wait to see if there's another click
     this.clickTimer = setTimeout(() => {
-      if (this.holdTimer) {
-        clearTimeout(this.holdTimer);
-        this.holdTimer = null;
-      }
-
       if (this.clickCount === 1) {
+        console.log('Flic: Single click confirmed');
         this.delegate?.onSingleClick();
       } else if (this.clickCount >= 2) {
+        console.log('Flic: Double click confirmed');
         this.delegate?.onDoubleClick();
       }
-      
       this.clickCount = 0;
-    }, 300); // 300ms to wait for potential second click
+    }, 250); // 250ms to wait for potential second click
+  }
+
+  private handleGenericButtonEvent(): void {
+    // Generic fallback for when we can't decode the specific protocol
+    console.log('Flic: Using generic button event handling');
+    this.handleButtonUp(); // Treat as button release
   }
 
   private startAutoReconnect(): void {

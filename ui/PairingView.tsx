@@ -19,6 +19,7 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
   const [appState, setAppState] = useState<AppState>(controller.currentState);
   const [isScanning, setIsScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
+  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   useEffect(() => {
     const listener: AppStateListener = {
@@ -192,6 +193,7 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
             {'\n'}• Check that app has Bluetooth permissions
             {'\n'}• Move closer to the Flic button
             {'\n'}• Try resetting the button (hold 7 seconds)
+            {'\n'}• Note: Full BLE requires development build, not Expo Go
           </Text>
         </View>
       </View>
