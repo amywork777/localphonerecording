@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "TaiRecorder",
-    "slug": "TaiRecorder",
+    "slug": "tairecorder-flic-app",
+    "owner": "amzyst",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,15 +13,53 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow TaiRecorder to record audio with your Flic button."
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.tairecorder",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs microphone access to record audio when you press your Flic button.",
+        "NSBluetoothAlwaysUsageDescription": "This app needs Bluetooth access to connect to your Flic button for remote recording control.",
+        "NSBluetoothPeripheralUsageDescription": "This app needs Bluetooth access to connect to your Flic button.",
+        "UIBackgroundModes": [
+          "audio",
+          "bluetooth-central"
+        ]
+      }
     },
     "android": {
+      "package": "com.yourcompany.tairecorder",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "RECORD_AUDIO",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "WAKE_LOCK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
