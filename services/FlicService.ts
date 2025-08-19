@@ -151,21 +151,20 @@ export class FlicService {
     const name = device.name?.toLowerCase() || '';
     const localName = device.localName?.toLowerCase() || '';
     
-    // Check for Flic-specific identifiers
-    const isFlicName = name.includes('flic') || 
-                       localName.includes('flic') ||
-                       name.includes('button') ||
-                       localName.includes('button');
+    // More specific Flic button identification
+    const isFlicName = name.includes('flic') || localName.includes('flic');
     
     // Check for Nordic UART Service UUID (used by Flic buttons)
     const hasFlicService = device.serviceUUIDs?.some(uuid => 
-      uuid.toLowerCase() === this.FLIC_SERVICE_UUID.toLowerCase() ||
-      uuid.toLowerCase() === this.GENERIC_ACCESS_SERVICE.toLowerCase()
+      uuid.toLowerCase() === this.FLIC_SERVICE_UUID.toLowerCase()
     );
     
-    // Check manufacturer data for Flic-specific patterns
-    const hasFlicManufacturerData = device.manufacturerData && 
-      device.manufacturerData.length > 0;
+    // Exclude common non-Flic devices
+    const isExcluded = name.includes('s22') || 
+                       name.includes('samsung') || 
+                       name.includes('iphone') || 
+                       name.includes('airpods') ||
+                       name.includes('watch');
     
     console.log('Checking device:', {
       name,
@@ -173,10 +172,24 @@ export class FlicService {
       serviceUUIDs: device.serviceUUIDs,
       manufacturerData: device.manufacturerData,
       isFlicName,
-      hasFlicService
+      hasFlicService,
+      isExcluded,
+      rssi: device.rssi
     });
     
-    return isFlicName || hasFlicService || hasFlicManufacturerData;
+    // Only consider it a Flic if:
+    // 1. Has "flic" in the name, OR
+    // 2. Has the Nordic UART service
+    // AND it's not an excluded device
+    const isFlic = (isFlicName || hasFlicService) && !isExcluded;
+    
+    if (isFlic) {
+      console.log('🎯 Identified as potential Flic button:', name || localName || device.id);
+    } else {
+      console.log('❌ Not a Flic button:', name || localName || device.id);
+    }
+    
+    return isFlic;
   }
 
   private async connectToDevice(device: Device): Promise<void> {
@@ -203,14 +216,41 @@ export class FlicService {
     if (!this.device) return;
 
     try {
-      // Find the Flic RX characteristic (for receiving notifications)
-      const rxCharacteristic = await this.findCharacteristic(
+      console.log('📡 Discovering all services and characteristics...');
+      
+      // First, let's see what services and characteristics are actually available
+      const services = await this.device.services();
+      console.log('🔍 Available services:', services.map(s => ({ uuid: s.uuid, isPrimary: s.isPrimary })));
+      
+      for (const service of services) {
+        const characteristics = await service.characteristics();
+        console.log(`📋 Service ${service.uuid} characteristics:`, 
+          characteristics.map(c => ({ uuid: c.uuid, isReadable: c.isReadable, isWritableWithResponse: c.isWritableWithResponse, isNotifiable: c.isNotifiable }))
+        );
+      }
+      
+      // Try to find the Flic RX characteristic (for receiving notifications)
+      let rxCharacteristic = await this.findCharacteristic(
         this.FLIC_SERVICE_UUID, 
         this.FLIC_RX_CHARACTERISTIC
       );
 
+      // If not found, try to find any notifiable characteristic
       if (!rxCharacteristic) {
-        console.error('Flic RX characteristic not found');
+        console.log('🔍 Flic RX not found, looking for any notifiable characteristic...');
+        for (const service of services) {
+          const characteristics = await service.characteristics();
+          const notifiableChar = characteristics.find(c => c.isNotifiable);
+          if (notifiableChar) {
+            console.log('📡 Found notifiable characteristic:', notifiableChar.uuid);
+            rxCharacteristic = notifiableChar;
+            break;
+          }
+        }
+      }
+
+      if (!rxCharacteristic) {
+        console.error('❌ No suitable RX/notification characteristic found');
         return;
       }
 
