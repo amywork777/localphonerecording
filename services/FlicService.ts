@@ -151,20 +151,20 @@ export class FlicService {
     const name = device.name?.toLowerCase() || '';
     const localName = device.localName?.toLowerCase() || '';
     
-    // More specific Flic button identification
+    // ONLY accept devices with "flic" explicitly in the name
     const isFlicName = name.includes('flic') || localName.includes('flic');
     
-    // Check for Nordic UART Service UUID (used by Flic buttons)
-    const hasFlicService = device.serviceUUIDs?.some(uuid => 
-      uuid.toLowerCase() === this.FLIC_SERVICE_UUID.toLowerCase()
-    );
-    
-    // Exclude common non-Flic devices
+    // Exclude all non-Flic devices - be very specific
     const isExcluded = name.includes('s22') || 
                        name.includes('samsung') || 
                        name.includes('iphone') || 
                        name.includes('airpods') ||
-                       name.includes('watch');
+                       name.includes('watch') ||
+                       name.includes('xiao') ||
+                       name.includes('voicedsp') ||
+                       name.includes('seeed') ||
+                       name.includes('esp') ||
+                       name.includes('arduino');
     
     console.log('Checking device:', {
       name,
@@ -172,19 +172,15 @@ export class FlicService {
       serviceUUIDs: device.serviceUUIDs,
       manufacturerData: device.manufacturerData,
       isFlicName,
-      hasFlicService,
       isExcluded,
       rssi: device.rssi
     });
     
-    // Only consider it a Flic if:
-    // 1. Has "flic" in the name, OR
-    // 2. Has the Nordic UART service
-    // AND it's not an excluded device
-    const isFlic = (isFlicName || hasFlicService) && !isExcluded;
+    // STRICT: Only devices with "flic" in name AND not excluded
+    const isFlic = isFlicName && !isExcluded;
     
     if (isFlic) {
-      console.log('🎯 Identified as potential Flic button:', name || localName || device.id);
+      console.log('🎯 Identified as REAL Flic button:', name || localName || device.id);
     } else {
       console.log('❌ Not a Flic button:', name || localName || device.id);
     }
