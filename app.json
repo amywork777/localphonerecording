@@ -27,7 +27,8 @@
         {
           "microphonePermission": "Allow TaiRecorder to record audio with your Flic button."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "ios": {
       "supportsTablet": true,

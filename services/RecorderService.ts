@@ -9,30 +9,18 @@ export class RecorderService {
   private bookmarks: number[] = [];
   private startTime: number = 0;
 
-  private readonly recordingOptions: Audio.RecordingOptions = {
-    android: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-    },
-    ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MEDIUM,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-      linearPCMBitDepth: 16,
-      linearPCMIsBigEndian: false,
-      linearPCMIsFloat: false,
-    },
-  };
-
   async start(): Promise<boolean> {
     try {
+      // Clean up any existing recording first
+      if (this.recording) {
+        try {
+          await this.recording.stopAndUnloadAsync();
+        } catch (cleanupError) {
+          console.log('Cleanup error (ignored):', cleanupError);
+        }
+        this.recording = null;
+      }
+
       // Request permissions
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
@@ -40,64 +28,66 @@ export class RecorderService {
         return false;
       }
 
-      // Set audio mode for recording
+      // Set audio mode for recording - minimal config for iOS
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
-        playsInSilentModeIOS: false,
-        shouldDuckAndroid: true,
-        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
-        playThroughEarpieceAndroid: false,
-        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
       });
 
       // Create new recording
       this.recording = new Audio.Recording();
-      await this.recording.prepareToRecordAsync(this.recordingOptions);
-      
-      // Generate file name with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      this.fileUri = `${FileSystem.documentDirectory}recording-${timestamp}.m4a`;
+      await this.recording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
       
       // Start recording
       await this.recording.startAsync();
       this.startTime = Date.now();
       this.bookmarks = [];
       
-      console.log('Recording started');
+      console.log('Recording started successfully');
       return true;
     } catch (error) {
       console.error('Failed to start recording:', error);
+      // Clean up on error
+      if (this.recording) {
+        try {
+          await this.recording.stopAndUnloadAsync();
+        } catch (cleanupError) {
+          console.log('Error cleanup failed (ignored):', cleanupError);
+        }
+        this.recording = null;
+      }
       return false;
     }
   }
 
   async stop(onFinish?: RecorderCallback): Promise<void> {
     if (!this.recording) {
+      console.log('No recording to stop');
       onFinish?.(undefined, []);
       return;
     }
 
     try {
+      console.log('Stopping recording...');
       await this.recording.stopAndUnloadAsync();
       const uri = this.recording.getURI();
       
-      // Copy to permanent location
-      if (uri && this.fileUri) {
-        await FileSystem.copyAsync({ from: uri, to: this.fileUri });
-      }
-
-      const finalUri = this.fileUri;
+      const finalUri = uri;
       const finalBookmarks = [...this.bookmarks];
 
-      // Clean up
+      // Clean up immediately
       this.recording = null;
       this.fileUri = null;
       this.bookmarks = [];
       
-      console.log('Recording stopped:', finalUri);
+      console.log('Recording stopped successfully:', finalUri);
       onFinish?.(finalUri, finalBookmarks);
     } catch (error) {
       console.error('Failed to stop recording:', error);
+      // Force cleanup even on error
+      this.recording = null;
+      this.fileUri = null;
+      this.bookmarks = [];
       onFinish?.(undefined, []);
     }
   }
@@ -127,5 +117,19 @@ export class RecorderService {
     } catch {
       return 0;
     }
+  }
+
+  // Cleanup method to ensure no lingering recordings
+  async cleanup(): Promise<void> {
+    if (this.recording) {
+      try {
+        await this.recording.stopAndUnloadAsync();
+      } catch (error) {
+        console.log('Cleanup error (ignored):', error);
+      }
+      this.recording = null;
+    }
+    this.fileUri = null;
+    this.bookmarks = [];
   }
 }

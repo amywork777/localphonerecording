@@ -1,4 +1,3 @@
-import { BleManager, Device, Characteristic } from 'react-native-ble-plx';
 import { PermissionsAndroid, Platform } from 'react-native';
 
 export enum ClickType {
@@ -15,8 +14,8 @@ export interface FlicEvents {
 }
 
 export class FlicService {
-  private bleManager: BleManager;
-  private device: Device | null = null;
+  private bleManager: any = null;
+  private device: any = null;
   private delegate: FlicEvents | null = null;
   private isScanning = false;
   private reconnectInterval: NodeJS.Timeout | null = null;
@@ -34,8 +33,16 @@ export class FlicService {
   private readonly ALT_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
   constructor() {
-    this.bleManager = new BleManager();
-    this.setupBleManager();
+    try {
+      // Dynamically import BLE manager only if available
+      const { BleManager } = require('react-native-ble-plx');
+      this.bleManager = new BleManager();
+      this.setupBleManager();
+    } catch (error) {
+      console.warn('BleManager initialization failed - Bluetooth not available in Expo Go');
+      // Continue without BLE - app will work in UI-only mode
+      this.bleManager = null;
+    }
   }
 
   setDelegate(delegate: FlicEvents): void {
@@ -43,6 +50,8 @@ export class FlicService {
   }
 
   private setupBleManager(): void {
+    if (!this.bleManager) return;
+    
     this.bleManager.onStateChange((state) => {
       console.log('BLE State:', state);
       if (state === 'PoweredOn') {
@@ -73,6 +82,11 @@ export class FlicService {
   }
 
   async startScanning(): Promise<boolean> {
+    if (!this.bleManager) {
+      console.warn('BLE Manager not available - running in Expo Go');
+      return false;
+    }
+
     const hasPermissions = await this.requestPermissions();
     if (!hasPermissions) {
       console.error('Bluetooth permissions not granted');
@@ -117,7 +131,7 @@ export class FlicService {
   }
 
   stopScanning(): void {
-    if (this.isScanning) {
+    if (this.isScanning && this.bleManager) {
       this.bleManager.stopDeviceScan();
       this.isScanning = false;
       console.log('Stopped BLE scanning');

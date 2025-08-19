@@ -14,11 +14,12 @@ import { AppController, AppState, AppStateListener } from '../services/AppContro
 interface HomeViewProps {
   controller: AppController;
   onPairingPress: () => void;
+  onSettingsPress: () => void;
 }
 
 const { width } = Dimensions.get('window');
 
-export const HomeView: React.FC<HomeViewProps> = ({ controller, onPairingPress }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ controller, onPairingPress, onSettingsPress }) => {
   const [appState, setAppState] = useState<AppState>(controller.currentState);
   const [uploadStatus, setUploadStatus] = useState({
     pending: 0,
@@ -151,6 +152,25 @@ export const HomeView: React.FC<HomeViewProps> = ({ controller, onPairingPress }
             {appState.isFlicConnected ? '🔵 Reconnect Flic' : '🔍 Pair Flic Button'}
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, styles.settingsButton]}
+          onPress={onSettingsPress}
+        >
+          <Text style={styles.controlButtonText}>⚙️ Settings</Text>
+        </TouchableOpacity>
+
+        {appState.lastRecordingUri && (
+          <TouchableOpacity
+            style={[styles.controlButton, styles.transcribeButton]}
+            onPress={() => controller.retranscribeLastRecording()}
+            disabled={appState.isTranscribing}
+          >
+            <Text style={styles.controlButtonText}>
+              {appState.isTranscribing ? '🔄 Transcribing...' : '📝 Transcribe Last Recording'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Upload Queue Info */}
@@ -181,6 +201,28 @@ export const HomeView: React.FC<HomeViewProps> = ({ controller, onPairingPress }
               Duration: {Math.round(appState.lastRecordingDuration / 1000)}s
             </Text>
           )}
+        </View>
+      )}
+
+      {/* Transcription Results */}
+      {(appState.isTranscribing || appState.lastTranscription) && (
+        <View style={styles.transcriptionContainer}>
+          <Text style={styles.transcriptionTitle}>Transcription</Text>
+          {appState.isTranscribing ? (
+            <View style={styles.transcribingStatus}>
+              <Text style={styles.transcribingText}>Transcribing audio...</Text>
+            </View>
+          ) : appState.lastTranscription ? (
+            <View>
+              <Text style={styles.transcriptionText}>{appState.lastTranscription}</Text>
+              <TouchableOpacity 
+                style={styles.retranscribeButton}
+                onPress={() => controller.retranscribeLastRecording()}
+              >
+                <Text style={styles.retranscribeButtonText}>🔄 Retranscribe</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       )}
 
@@ -291,6 +333,12 @@ const styles = StyleSheet.create({
   connectedButton: {
     backgroundColor: '#FF9800',
   },
+  settingsButton: {
+    backgroundColor: '#9E9E9E',
+  },
+  transcribeButton: {
+    backgroundColor: '#8BC34A',
+  },
   controlButtonText: {
     color: 'white',
     fontSize: 18,
@@ -376,5 +424,51 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 5,
     lineHeight: 20,
+  },
+  transcriptionContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  transcriptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  transcriptionText: {
+    fontSize: 15,
+    color: '#333',
+    lineHeight: 22,
+    marginBottom: 10,
+    backgroundColor: '#f8f8f8',
+    padding: 12,
+    borderRadius: 6,
+  },
+  transcribingStatus: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  transcribingText: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  retranscribeButton: {
+    backgroundColor: '#FF9800',
+    borderRadius: 6,
+    padding: 8,
+    alignItems: 'center',
+  },
+  retranscribeButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
