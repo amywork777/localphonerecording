@@ -421,8 +421,11 @@ export class FlicService {
 
   private handleGenericButtonEvent(): void {
     // Generic fallback for when we can't decode the specific protocol
-    console.log('Flic: Using generic button event handling');
-    this.handleButtonUp(); // Treat as button release
+    console.log('🔘 Flic: Button event detected - triggering single click');
+    
+    // For now, just trigger single click for every button event
+    // This ensures button presses work even if we can't decode the exact protocol
+    this.delegate?.onSingleClick();
   }
 
   private startAutoReconnect(): void {

@@ -162,33 +162,40 @@ export class AppController implements FlicEvents {
 
   // FlicEvents implementation
   onSingleClick(): void {
+    console.log('🔘 Flic: Single click received');
+    
     if (this.state.killSwitchEnabled) {
       console.log('Single click ignored - kill switch enabled');
       return;
     }
 
-    if (this.recorder.isRecording) {
-      // Add bookmark
+    if (!this.recorder.isRecording) {
+      // Start recording on single click
+      console.log('🎤 Starting recording from Flic single click');
+      this.startRecording();
+    } else {
+      // Add bookmark if already recording
+      console.log('📍 Adding bookmark from Flic single click');
       this.recorder.mark();
       this.notify('Bookmark added', '📍');
       this.hapticFeedback();
-    } else {
-      // Start recording
-      this.startRecording();
     }
   }
 
   onDoubleClick(): void {
+    console.log('🔘🔘 Flic: Double click received');
+    
     if (this.state.killSwitchEnabled) {
       console.log('Double click ignored - kill switch enabled');
       return;
     }
 
     if (this.recorder.isRecording) {
-      // Stop and save recording
+      // Stop recording on double click
+      console.log('⏹️ Stopping recording from Flic double click');
       this.stopAndSaveRecording();
     } else {
-      // Quick start and stop for testing
+      console.log('⚠️ Double click but not recording - ignoring');
       this.notify('Double click - not recording', '⚠️');
     }
   }
