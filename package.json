@@ -23,7 +23,8 @@
     "react-native-ble-plx": "^3.5.0",
     "react-native-safe-area-context": "5.4.0",
     "react-native-web": "^0.20.0",
-    "expo-audio": "~0.4.8"
+    "expo-audio": "~0.4.8",
+    "expo-dev-client": "~5.2.4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
