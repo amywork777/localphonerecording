@@ -94,13 +94,50 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
 
   const showInstructions = () => {
     Alert.alert(
-      'Pairing Instructions',
-      '1. Make sure your Flic button is nearby and charged\n\n' +
-      '2. Press "Start Pairing" below\n\n' +
-      '3. Press and hold your Flic button until it starts blinking\n\n' +
-      '4. Release the button and wait for connection\n\n' +
-      '5. The app will automatically connect when found',
-      [{ text: 'Got it', style: 'default' }]
+      'How to Pair Your Flic Button',
+      '🔵 LED MEANINGS:\n' +
+      '• Solid Blue = Connected & ready\n' +
+      '• Blinking Blue = Pairing mode\n' +
+      '• Red Flash = Low battery\n' +
+      '• No Light = Sleep/disconnected\n\n' +
+      
+      '📋 PAIRING STEPS:\n' +
+      '1. Hold Flic button for 7+ seconds\n' +
+      '2. LED will flash blue (pairing mode)\n' +
+      '3. Press "Start Pairing" in app\n' +
+      '4. Wait for connection (30 seconds max)\n' +
+      '5. LED turns solid blue when paired\n\n' +
+      
+      '🔄 RESET IF NEEDED:\n' +
+      'Hold button 7 seconds → Release → Hold 7 more seconds',
+      
+      [{ text: 'Got it!', style: 'default' }],
+      { cancelable: true }
+    );
+  };
+
+  const showDetailedGuide = () => {
+    Alert.alert(
+      'Detailed Flic Guide',
+      '🔋 BATTERY CHECK:\n' +
+      '• Press button once - should light up\n' +
+      '• Red flash = charge needed\n' +
+      '• No light = dead battery\n\n' +
+      
+      '🔧 TROUBLESHOOTING:\n' +
+      '• Button not responding? Try reset\n' +
+      '• App can\'t find it? Check distance (<3 feet)\n' +
+      '• Previously paired? Reset first\n' +
+      '• Still issues? Try new battery\n\n' +
+      
+      '📱 PHONE SETUP:\n' +
+      '• Enable Bluetooth\n' +
+      '• Grant location permissions\n' +
+      '• Close other BLE apps\n' +
+      '• Stay close during pairing',
+      
+      [{ text: 'Close', style: 'default' }],
+      { cancelable: true }
     );
   };
 
@@ -162,7 +199,14 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
           style={[styles.actionButton, styles.instructionsButton]}
           onPress={showInstructions}
         >
-          <Text style={styles.actionButtonText}>❓ Pairing Instructions</Text>
+          <Text style={styles.actionButtonText}>📋 Quick Pairing Guide</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.helpButton]}
+          onPress={showDetailedGuide}
+        >
+          <Text style={styles.actionButtonText}>🔧 Detailed Help & Troubleshooting</Text>
         </TouchableOpacity>
       </View>
 
@@ -171,9 +215,21 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>About Flic Buttons</Text>
           <Text style={styles.infoText}>
-            Flic buttons are wireless smart buttons that connect via Bluetooth Low Energy. 
-            Once paired, your button will automatically reconnect when in range.
+            Flic buttons are wireless smart buttons using Bluetooth Low Energy (BLE). 
+            They feature a clickable surface with LED status indicator and work up to 
+            50 meters away. Battery typically lasts 1-2 years with normal use.
           </Text>
+        </View>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>LED Status Guide</Text>
+          <View style={styles.actionList}>
+            <Text style={styles.actionItem}>🔵 Solid Blue: Connected and ready</Text>
+            <Text style={styles.actionItem}>💙 Blinking Blue: Pairing mode active</Text>
+            <Text style={styles.actionItem}>🔴 Red Flash: Low battery warning</Text>
+            <Text style={styles.actionItem}>⚫ No Light: Sleep mode or disconnected</Text>
+            <Text style={styles.actionItem}>🟢 Green Flash: Successfully paired</Text>
+          </View>
         </View>
 
         <View style={styles.infoCard}>
@@ -186,14 +242,26 @@ export const PairingView: React.FC<PairingViewProps> = ({ controller, onBack }) 
         </View>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Troubleshooting</Text>
+          <Text style={styles.infoTitle}>Step-by-Step Pairing</Text>
+          <View style={styles.actionList}>
+            <Text style={styles.actionItem}>1️⃣ Check battery: Press button → Should light up</Text>
+            <Text style={styles.actionItem}>2️⃣ Reset button: Hold 7 seconds until blue blinks</Text>
+            <Text style={styles.actionItem}>3️⃣ Enable phone Bluetooth and location</Text>
+            <Text style={styles.actionItem}>4️⃣ Stay within 3 feet during pairing</Text>
+            <Text style={styles.actionItem}>5️⃣ Tap "Start Pairing" when button blinks blue</Text>
+            <Text style={styles.actionItem}>6️⃣ Wait for solid blue = Success!</Text>
+          </View>
+        </View>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>Common Issues & Solutions</Text>
           <Text style={styles.infoText}>
-            If pairing fails:
-            {'\n'}• Make sure Bluetooth is enabled
-            {'\n'}• Check that app has Bluetooth permissions
-            {'\n'}• Move closer to the Flic button
-            {'\n'}• Try resetting the button (hold 7 seconds)
-            {'\n'}• Note: Full BLE requires development build, not Expo Go
+            🔴 No LED when pressed? → Replace battery (CR2032)
+            {'\n'}💙 Button blinks but won't pair? → Try factory reset
+            {'\n'}📱 App can't find button? → Check Bluetooth permissions
+            {'\n'}⚡ Button works once then stops? → Stay in BLE range
+            {'\n'}🔄 Previously paired elsewhere? → Reset first
+            {'\n'}⚠️ Note: Full BLE requires development build, not Expo Go
           </Text>
         </View>
       </View>
@@ -304,6 +372,9 @@ const styles = StyleSheet.create({
   },
   instructionsButton: {
     backgroundColor: '#FF9800',
+  },
+  helpButton: {
+    backgroundColor: '#9C27B0',
   },
   disabledButton: {
     backgroundColor: '#ccc',
