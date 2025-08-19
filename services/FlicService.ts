@@ -292,7 +292,9 @@ export class FlicService {
 
       // Send initialization command (this may vary by Flic button model)
       const initCommand = new Uint8Array([0x01, 0x00]); // Basic enable command
-      await txCharacteristic.writeWithResponse(Buffer.from(initCommand).toString('base64'));
+      // Convert to base64 without Buffer
+      const base64Command = btoa(String.fromCharCode.apply(null, Array.from(initCommand)));
+      await txCharacteristic.writeWithResponse(base64Command);
       
       console.log('Sent initialization command to Flic button');
     } catch (error) {
@@ -319,13 +321,18 @@ export class FlicService {
 
   private handleFlicButtonEvent(data: string): void {
     try {
-      // Decode base64 data from Flic button
-      const buffer = Buffer.from(data, 'base64');
-      console.log('Flic button data received:', Array.from(buffer).map(b => '0x' + b.toString(16)).join(' '));
+      // Decode base64 data from Flic button using React Native compatible method
+      const binaryString = atob(data); // Use atob instead of Buffer.from
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
       
-      if (buffer.length === 0) return;
+      console.log('Flic button data received:', Array.from(bytes).map(b => '0x' + b.toString(16)).join(' '));
       
-      const eventCode = buffer[0];
+      if (bytes.length === 0) return;
+      
+      const eventCode = bytes[0];
       
       // Handle different Flic button events
       switch (eventCode) {
